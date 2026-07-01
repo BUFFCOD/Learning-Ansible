@@ -3,4 +3,3 @@ Vagrant.configure("2") do |config|
   config.vm.provider "vmware_desktop" do |v|
   end
 end
-d
