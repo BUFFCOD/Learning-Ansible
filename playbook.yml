@@ -1,0 +1,26 @@
+---
+- hosts: all
+  become: true
+  tasks:
+    - name: Ensure chrony is installed
+      dnf:
+        name: chrony
+        state: present
+
+    - name: Ensure chronyd is running and enabled
+      service:
+        name: chronyd
+        state: started
+        enabled: yes
+
+
+    - name: Insall nmap
+      dnf:
+        name: nmap
+        state: present 
+
+
+
+
+
+
