@@ -1,0 +1,58 @@
+---
+- name: Set up Node.js server
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Install EPEL repo.
+      yum:
+        name: epel-release
+        state: present
+
+    - name: Install Remi repo.
+      yum:
+        name: "https://rpms.remirepo.net/enterprise/remi-release-9.rpm"
+        disable_gpg_check: true
+        state: present
+
+    - name: Ensure firewalld is stopped (since this is for testing).
+      service:
+        name: firewalld
+        state: stopped
+
+    - name: Install Node.js and npm.
+      yum:
+        name: npm
+        state: present
+
+    - name: Install Forever (to run our Node.js app).
+      npm:
+        name: forever
+        global: yes
+        state: present
+
+    - name: Check list of running Node.js apps.
+      command: /usr/local/bin/forever list
+      register: forever_list
+      changed_when: false
+
+    - name: Copy Node.js app to server.
+      copy:
+        src: app/
+        dest: "{{ node_apps_location }}/app/"
+        owner: root
+        group: root
+        mode: 0755
+
+    - name: Install npm dependencies for the app.
+      npm:
+        path: "{{ node_apps_location }}/app"
+
+    - name: Install npm dependencies for the app.
+      npm:
+        path: "{{ node_apps_location }}/app"
+
+    - name: Start example Node.js app.
+      command: "/usr/local/bin/forever start {{ node_apps_location }}/app/app.js"
+      when: "forever_list.stdout.find(node_apps_location + \
+'/app/app.js') == -1 "

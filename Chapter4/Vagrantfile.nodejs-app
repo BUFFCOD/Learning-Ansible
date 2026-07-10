@@ -1,0 +1,21 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "generic/rocky9"
+  config.vm.hostname = "rocky9"
+
+  # Bridged network
+  config.vm.network "public_network"
+
+  config.vm.provider "virtualbox" do |vb|
+    vb.name = "rocky9"
+    vb.memory = 2048
+    vb.cpus = 2
+  end
+
+  config.vm.provision "shell", inline: <<-SHELL
+    dnf -y update
+    dnf -y install vim git curl wget gcc gcc-c++ make
+  SHELL
+end
