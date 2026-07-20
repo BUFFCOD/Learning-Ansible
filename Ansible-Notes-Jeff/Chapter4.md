@@ -1,50 +1,66 @@
-## Learn ##
+# Ansible Playbook Notes — Chapter 4
 
-When use vagrant. It uses public key authentication so if you wish to make a vm  for you to login normally you need to add this your inventory file. 
+## Vagrant + Ansible Authentication
 
-```ini
-[all:vars]
-ansible_ssh_private_key_file = /home/your_user/.vagrant.d/insecure_private_key
-```
-
-and also include the vagrant user in your inventory file. 
+Vagrant VMs use public key authentication. To connect to them, add the insecure private key and the `vagrant` user to your inventory:
 
 ```ini
 [all:vars]
 ansible_ssh_private_key_file = /home/your_user/.vagrant.d/insecure_private_key
 ansible_user = vagrant
 ```
-it will use this private key to login into every vm that you create with vagrant.
 
+This key works for every VM created with Vagrant.
 
+---
 
+## YAML Syntax in Playbooks
 
+### Folded scalar (`>`)
 
-In ansible you can use > to make a list of commands run as a single command. 
-```
+Use `>` to write a long command across multiple lines; YAML folds it into a single line.
+
+```yaml
 - command: >
-cp httpd-vhosts.conf /etc/httpd/conf/httpd-vhosts.conf
-
+    cp httpd-vhosts.conf /etc/httpd/conf/httpd-vhosts.conf
 ```
 
+### Document separator (`---`)
 
-In ansible every time you use --- it means that you are starting a new playbook. so one file could have multiple playbooks.
+Each `---` starts a new play. A single file can contain multiple plays.
 
+---
 
+## Playbook Execution
+
+### Common CLI options
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--inventory=PATH` | `-i` | Custom inventory file (default: `/etc/ansible/hosts`) |
+| `--verbose` | `-v` | Verbose output; `-vvvv` for max detail |
+| `--extra-vars=VARS` | `-e` | Pass variables as `"key=value,key=value"` |
+| `--forks=NUM` | `-f` | Concurrent forks (>5 speeds up multi-server runs) |
+| `--connection=TYPE` | `-c` | Connection type (default `ssh`; use `local` for cron/local runs) |
+| `--check` | — | Dry run — shows changes without applying them |
+| `--limit GROUP` | — | Restrict run to a subset of hosts, even if the play targets `all` |
+| `--list-hosts` | — | Show which hosts the playbook would run against |
+| `--force-handlers` | — | Run handlers even if a task later fails |
+
+**Examples:**
+
+```bash
 ansible-playbook playbook.yml --limit webservers
-
-you can use the ansible --limit option to limit the playbook to a specific group of hosts even if the playbook is targeting all hosts.
-
-
 ansible-playbook playbook.yml --list-hosts
+```
 
+---
 
-ansible --list-host will allow you see all the host that this playbook will run on.
+## Privilege Escalation
 
+Two approaches when the remote user isn't set in `ansible.cfg`:
 
-
-
-There are different ways a setting up sudo in playbook. if you didn't set up the remote user in your config file you can use the become option in your playbook or use the -u option to specify the remote user. 
+**In the playbook:**
 
 ```yaml
 - hosts: all
@@ -55,68 +71,53 @@ There are different ways a setting up sudo in playbook. if you didn't set up the
       yum:
         name: httpd
         state: present
-``` 
+```
 
-or you can use the -u option to specify the remote user. 
+**On the command line:**
 
 ```bash
 ansible-playbook playbook.yml -u root
 ```
 
+---
 
-Other ansible-playbook options that you can use are:
-## Ansible Playbook CLI Options
+## Debugging Failed Services with Ad-Hoc Commands
 
-| Flag | Short | Description |
-|------|-------|--------------|
-| `--inventory=PATH` | `-i` | Custom inventory file (default: `/etc/ansible/hosts`) |
-| `--verbose` | `-v` | Verbose output; use `-vvvv` for max detail |
-| `--extra-vars=VARS` | `-e` | Pass variables as `"key=value,key=value"` |
-| `--forks=NUM` | `-f` | Number of concurrent forks (>5 speeds up multi-server runs) |
-| `--connection=TYPE` | `-c` | Connection type (default `ssh`; use `local` for local/cron runs) |
-| `--check` | — | Dry run — shows changes without applying them |
+When a service fails to start:
 
-
-
-
-
-if you receive an error like this: 
-
-```See "systemctl status httpd.service" and "journalctl -xeu httpd.service" for details.
-
-Origin: /home/wlouis/Vagrant/Chapter4/play1-update.yml:25:7
-
-23         - src: httpd-vhost.conf
-24           dest: /etc/httpd/conf/httpd-vhosts.conf
-25     - name: Make sure Apache is started now and at boot.
-         ^ column 7
-
-fatal: [10.19.30.23]: FAILED! => {"changed": false, "msg": "Unable to start service httpd: Job for httpd.service failed because the control process exited with error code.\nSee \"systemctl status httpd.service\" and \"journalctl -xeu httpd.service\" for details.\n"}
 ```
-remeber you can use adhoc commands to check the status of the service and see what is wrong. 
+fatal: [10.19.30.23]: FAILED! => {"changed": false,
+"msg": "Unable to start service httpd: Job for httpd.service failed
+because the control process exited with error code."}
+```
+
+Don't guess — inspect the host directly:
 
 ```bash
 ansible webservers -b -a "systemctl status httpd.service"
 ansible webservers -b -a "journalctl -xeu httpd.service"
 ```
 
-the -b option is used to run the command as root.
-the -a option is used to run the command as an argument.
+- `-b` — become root
+- `-a` — arguments passed to the module (default: `command`)
 
+---
 
+## Handlers
 
+A handler is a task that runs **only when notified** by another task that reported `changed`. Typical use: restart a service after its config file changes.
 
-In ansible we have something called a handler. A handler is a task that is only run when a specific task notifies it that it changed something. Handlers are typically used to restart services after a configuration file has been changed. 
+**Task that notifies:**
 
 ```yaml
 - name: Update httpd-vhost.conf
   copy:
     src: httpd-vhost.conf
     dest: /etc/httpd/conf/httpd-vhosts.conf
-  notify:
-    - restart httpd
+  notify: restart httpd
 ```
-handlers are defined in the same playbook as the tasks that notify them. 
+
+**Handler definition:**
 
 ```yaml
 handlers:
@@ -124,71 +125,79 @@ handlers:
     service:
       name: httpd
       state: restarted
-
 ```
 
-simliar to  variables, handlers can be defined in a separate file and included in the playbook.  but  handlers will not run if a task in the playbook fails.  so if you have a task that is supposed to update a configuration file and it fails, the handler will not run and the service will not be restarted. to prevent this from happening you can use --force-handlers option when running the playbook. this will force all handlers to run even if a task fails.
+### Key behaviors
 
+- Handlers run **once**, at the end of the play, even if notified many times.
+- Handlers can live in a separate file and be included, like variables.
+- **Gotcha:** if any task fails, remaining handlers are skipped — the service never restarts. Use `--force-handlers` to run them anyway.
 
-## What `with_*` actually is
+---
 
-`with_items` isn't one keyword — it's two parts glued together:
+## Loops: `with_*` vs `loop`
 
-- **`with_`** = "loop this task using a lookup plugin"
-- **`items`** = the name of the lookup plugin to use
+### What `with_items` actually is
 
-Lookup plugins are little programs built into Ansible that fetch or generate lists of data. Ansible ships with a bunch of them, each with a fixed name:
+`with_items` is two parts glued together:
 
-| Keyword | Plugin used | What it loops over |
+- **`with_`** — "loop this task using a lookup plugin"
+- **`items`** — the *name of the lookup plugin*
+
+Lookup plugins are built-in programs that fetch or generate lists. The plugin name is fixed by Ansible, not chosen by you.
+
+| Keyword | Plugin | Loops over |
 |---|---|---|
 | `with_items` | `items` | a plain list |
 | `with_fileglob` | `fileglob` | files matching a pattern (`*.conf`) |
 | `with_dict` | `dict` | key/value pairs of a dictionary |
-| `with_sequence` | `sequence` | a number range (1, 2, 3...) |
+| `with_sequence` | `sequence` | a number range (1, 2, 3…) |
 | `with_lines` | `lines` | output lines of a command |
 
-So when Ansible sees `with_items`, it literally goes and finds the plugin named `items`, feeds it your list, and runs the task once per result.
+`with_ja` would make Ansible look for a lookup plugin named `ja`, find nothing, and error out.
 
-## How this relates to your question
+### The two names in a loop task
 
-You were treating `items` like a variable name you chose — and asking if you could choose `ja` instead. But `items` was never yours to name. `with_ja` would make Ansible look for a lookup plugin called `ja`, find nothing, and error out.
+1. **`items`** → must match a real plugin (not yours to rename)
+2. **`item`** → the automatic variable holding the current value (*can* be renamed)
 
-The two names in that task are both fixed by Ansible, not by you:
+Rename `item` with `loop_control`:
 
-1. **`items`** → must match a real plugin
-2. **`item`** → the automatic variable holding the current loop value
-
-The only one you can rename is `item`, and only via `loop_control: loop_var: ja` — which tells Ansible "put each value in a variable called `ja` instead of `item`."
-
-
-
+```yaml
 loop:
   - apache2
   - mysql
 loop_control:
   loop_var: ja
+```
 
-  - name: Create users.
+### Looping over dictionaries
+
+```yaml
+- name: Create users.
   user:
     name: "{{ item.name }}"
     groups: "{{ item.group }}"
   loop:
     - { name: 'alice', group: 'admin' }
     - { name: 'bob',   group: 'dev' }
+```
 
+---
 
-In ansible there is a module called lineinfile. This module is used to add a line to a file if it doesn't already exist or to change a line in a file if it does exist. 
+## The `lineinfile` Module
+
+Adds a line to a file if it's missing, or replaces a matching line if present.
 
 ```yaml
 - name: Adjust OpCache memory setting.
-lineinfile:
-dest: "/etc/php/7.4/apache2/conf.d/10-opcache.ini"
-regexp: "^opcache.memory_consumption"
-line: "opcache.memory_consumption = 96"
-state: present
-notify: restart apache
+  lineinfile:
+    dest: "/etc/php/7.4/apache2/conf.d/10-opcache.ini"
+    regexp: "^opcache.memory_consumption"
+    line: "opcache.memory_consumption = 96"
+    state: present
+  notify: restart apache
 ```
 
-This task will check the file /etc/php/7.4/apache2/conf.d/10-opcache.ini for a line that starts with opcache.memory_consumption. If it finds one, it will replace it with opcache.memory_consumption = 96. If it doesn't find one, it will add the line to the end of the file.
-
-
+- `regexp` matches an existing line → replaced with `line`
+- No match → `line` is appended to the end of the file
